@@ -1,4 +1,5 @@
-
+_Manifests here require Kubernetes 1.8 now.
+On earlier versions use [v2.1.0](https://github.com/Yolean/kubernetes-kafka/tree/v2.1.0)._
 
 # Kafka on Kubernetes
 
@@ -6,9 +7,12 @@ Transparent Kafka setup that you can grow with.
 Good for both experiments and production.
 
 How to use:
+ * Good to know: you'll likely want to fork this repo. It prioritizes clarity over configurability, using plain manifests and .propeties files; no client side logic.
  * Run a Kubernetes cluster, [minikube](https://github.com/kubernetes/minikube) or real.
  * Quickstart: use the `kubectl apply`s below.
- * Kafka for real: fork and have a look at [addon](https://github.com/Yolean/kubernetes-kafka/labels/addon)s.
+ * Have a look at [addon](https://github.com/Yolean/kubernetes-kafka/labels/addon)s, or the official forks:
+   - [kubernetes-kafka-small](https://github.com/Reposoft/kubernetes-kafka-small) for single-node clusters like Minikube.
+   - [StreamingMicroservicesPlatform](https://github.com/StreamingMicroservicesPlatform/kubernetes-kafka) Like Confluent's [platform quickstart](https://docs.confluent.io/current/connect/quickstart.html) but for Kubernetes.
  * Join the discussion in issues and PRs.
 
 No readable readme can properly introduce both [Kafka](http://kafka.apache.org/) and [Kubernetes](https://kubernetes.io/),
@@ -27,6 +31,12 @@ The goal is to provide [Bootstrap servers](http://kafka.apache.org/documentation
 
 Zookeeper at `zookeeper.kafka.svc.cluster.local:2181`.
 
+## Prepare storage classes
+
+For Minikube run `kubectl apply -f configure/minikube-storageclass-broker.yml; kubectl apply -f configure/minikube-storageclass-zookeeper.yml`.
+
+There's a similar setup for AKS under `configure/aks-*` and for GKE under `configure/gke-*`. You might want to tweak it before creating.
+
 ## Start Zookeeper
 
 The [Kafka book](https://www.confluent.io/resources/kafka-definitive-guide-preview-edition/) recommends that Kafka has its own Zookeeper cluster with at least 5 instances.
@@ -40,7 +50,7 @@ To support automatic migration in the face of availability zone unavailability w
 ## Start Kafka
 
 ```
-kubectl apply -f ./
+kubectl apply -f ./kafka/
 ```
 
 You might want to verify in logs that Kafka found its own DNS name(s) correctly. Look for records like:
@@ -50,29 +60,19 @@ kubectl -n kafka logs kafka-0 | grep "Registered broker"
 ```
 
 That's it. Just add business value :wink:.
-For clients we tend to use [librdkafka](https://github.com/edenhill/librdkafka)-based drivers like [node-rdkafka](https://github.com/Blizzard/node-rdkafka).
-To use [Kafka Connect](http://kafka.apache.org/documentation/#connect) and [Kafka Streams](http://kafka.apache.org/documentation/streams/) you may want to take a look at our [sample](https://github.com/solsson/dockerfiles/tree/master/connect-files) [Dockerfile](https://github.com/solsson/dockerfiles/tree/master/streams-logfilter)s.
-And don't forget the [addon](https://github.com/Yolean/kubernetes-kafka/labels/addon)s.
 
 ## RBAC
 
-For clusters that enfoce [RBAC](https://kubernetes.io/docs/admin/authorization/rbac/) there's a minimal set of policies in
+For clusters that enforce [RBAC](https://kubernetes.io/docs/admin/authorization/rbac/) there's a minimal set of policies in
 ```
 kubectl apply -f rbac-namespace-default/
 ```
 
-## Caution: `Delete` Reclaim Policy is default
-
-In production you likely want to [manually set Reclaim Policy](https://kubernetes.io/docs/tasks/administer-cluster/change-pv-reclaim-policy/),
-or your data will be gone if the generated [volume claim](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims)s are deleted.
-
-This can't be done [in manifests](https://github.com/Yolean/kubernetes-kafka/pull/50),
-at least not [until Kubernetes 1.8](https://github.com/kubernetes/features/issues/352).
-
 ## Tests
 
-```
-kubectl apply -f test/
-# Anything that isn't READY here is a failed test
-kubectl get pods -l test-target=kafka,test-type=readiness -w --all-namespaces
-```
+Tests are based on the [kube-test](https://github.com/Yolean/kube-test) concept.
+Like the rest of this repo they have `kubectl` as the only local dependency.
+
+Run self-tests or not. They do generate some load, but indicate if the platform is working or not.
+ * To include tests, replace `apply -f` with `apply -R -f` in your `kubectl`s above.
+ * Anything that isn't READY in `kubectl get pods -l test-type=readiness --namespace=test-kafka` is a failed test.
