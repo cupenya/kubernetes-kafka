@@ -12,7 +12,12 @@ spec:
         app: zookeeper
         storage: ephemeral
       annotations:
+        service-discovery.datadoghq.com/zookeeper.check_names: '["zk"]'
+        service-discovery.datadoghq.com/zookeeper.init_configs: '[{}]'
+        service-discovery.datadoghq.com/zookeeper.instances: '[{"host": "%%host%%", "port": 2181, "timeout": 3}]'
     spec:
+      nodeSelector:
+        "cloud.google.com/gke-nodepool": dev-pool
       terminationGracePeriodSeconds: 10
       initContainers:
       - name: init-config
@@ -47,11 +52,9 @@ spec:
             cpu: 10m
             memory: 100Mi
         readinessProbe:
-          exec:
-            command:
-            - /bin/sh
-            - -c
-            - '[ "imok" = "$(echo ruok | nc -w 1 127.0.0.1 2181)" ]'
+          tcpSocket:
+            port: 2181
+          timeoutSeconds: 10
         volumeMounts:
         - name: config
           mountPath: /etc/kafka
