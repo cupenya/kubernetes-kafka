@@ -1,27 +1,28 @@
-apiVersion: apps/v1beta1
+apiVersion: apps/v1beta2
 kind: StatefulSet
 metadata:
   name: zoo
   namespace: kafka
 spec:
+  selector:
+    matchLabels:
+      app: zookeeper
+      storage: ephemeral
   serviceName: "zoo"
   replicas: 2
+  updateStrategy:
+    type: OnDelete
   template:
     metadata:
       labels:
         app: zookeeper
         storage: ephemeral
       annotations:
-        service-discovery.datadoghq.com/zookeeper.check_names: '["zk"]'
-        service-discovery.datadoghq.com/zookeeper.init_configs: '[{}]'
-        service-discovery.datadoghq.com/zookeeper.instances: '[{"host": "%%host%%", "port": 2181, "timeout": 3}]'
     spec:
-      nodeSelector:
-        "cloud.google.com/gke-nodepool": dev-pool
       terminationGracePeriodSeconds: 10
       initContainers:
       - name: init-config
-        image: solsson/kafka:0.11.0.1@sha256:3a77b3396b0890b0b0db880136c16bc83922588ed1d9a9ed82e32c1ae7621770
+        image: solsson/kafka:1.0.0@sha256:17fdf1637426f45c93c65826670542e36b9f3394ede1cb61885c6a4befa8f72d
         command: ['/bin/bash', '/etc/kafka/init.sh']
         env:
         - name: ID_OFFSET
@@ -33,7 +34,7 @@ spec:
           mountPath: /var/lib/zookeeper/data
       containers:
       - name: zookeeper
-        image: solsson/kafka:0.11.0.1@sha256:3a77b3396b0890b0b0db880136c16bc83922588ed1d9a9ed82e32c1ae7621770
+        image: solsson/kafka:1.0.0@sha256:17fdf1637426f45c93c65826670542e36b9f3394ede1cb61885c6a4befa8f72d
         env:
         - name: KAFKA_LOG4J_OPTS
           value: -Dlog4j.configuration=file:/etc/kafka/log4j.properties
@@ -52,9 +53,11 @@ spec:
             cpu: 10m
             memory: 100Mi
         readinessProbe:
-          tcpSocket:
-            port: 2181
-          timeoutSeconds: 10
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - '[ "imok" = "$(echo ruok | nc -w 1 -q 1 127.0.0.1 2181)" ]'
         volumeMounts:
         - name: config
           mountPath: /etc/kafka

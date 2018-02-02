@@ -11,6 +11,9 @@ data:
     KAFKA_BROKER_ID=${HOSTNAME##*-}
     sed -i "s/#init#broker.id=#init#/broker.id=$KAFKA_BROKER_ID/" /etc/kafka/server.properties
 
+    LABELS="kafka-broker-id=$KAFKA_BROKER_ID"
+    ANNOTATIONS=""
+
     hash kubectl 2>/dev/null || {
       sed -i "s/#init#broker.rack=#init#/#init#broker.rack=# kubectl not found in path/" /etc/kafka/server.properties
     } && {
@@ -21,26 +24,47 @@ data:
         sed -i "s/#init#broker.rack=#init#/#init#broker.rack=# zone label not found for node $NODE_NAME/" /etc/kafka/server.properties
       else
         sed -i "s/#init#broker.rack=#init#/broker.rack=$ZONE/" /etc/kafka/server.properties
+        LABELS="$LABELS kafka-broker-rack=$ZONE"
+      fi
+
+      OUTSIDE_HOST=$(kubectl get node "$NODE_NAME" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+      if [ $? -ne 0 ]; then
+        echo "Outside (i.e. cluster-external access) host lookup command failed"
+      else
+        OUTSIDE_PORT=3240${KAFKA_BROKER_ID}
+        sed -i "s|#init#advertised.listeners=OUTSIDE://#init#|advertised.listeners=OUTSIDE://${OUTSIDE_HOST}:${OUTSIDE_PORT}|" /etc/kafka/server.properties
+        ANNOTATIONS="$ANNOTATIONS kafka-listener-outside-host=$OUTSIDE_HOST kafka-listener-outside-port=$OUTSIDE_PORT"
+      fi
+
+      if [ ! -z "$LABELS" ]; then
+        kubectl -n $POD_NAMESPACE label pod $POD_NAME $LABELS || echo "Failed to label $POD_NAMESPACE.$POD_NAME - RBAC issue?"
+      fi
+      if [ ! -z "$ANNOTATIONS" ]; then
+        kubectl -n $POD_NAMESPACE annotate pod $POD_NAME $ANNOTATIONS || echo "Failed to annotate $POD_NAMESPACE.$POD_NAME - RBAC issue?"
       fi
     }
 
   server.properties: |-
-    # Licensed to the Apache Software Foundation (ASF) under one or more
-    # contributor license agreements.  See the NOTICE file distributed with
-    # this work for additional information regarding copyright ownership.
-    # The ASF licenses this file to You under the Apache License, Version 2.0
-    # (the "License"); you may not use this file except in compliance with
-    # the License.  You may obtain a copy of the License at
-    #
-    #    http://www.apache.org/licenses/LICENSE-2.0
-    #
-    # Unless required by applicable law or agreed to in writing, software
-    # distributed under the License is distributed on an "AS IS" BASIS,
-    # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    # See the License for the specific language governing permissions and
-    # limitations under the License.
+    ############################# Log Basics #############################
 
-    # see kafka.server.KafkaConfig for additional details and defaults
+    # A comma seperated list of directories under which to store log files
+    # Overrides log.dir
+    log.dirs=/var/lib/kafka/data/topics
+
+    # The default number of log partitions per topic. More partitions allow greater
+    # parallelism for consumption, but this will also result in more files across
+    # the brokers.
+    num.partitions=1
+
+    default.replication.factor=3
+
+    min.insync.replicas=2
+
+    auto.create.topics.enable=true
+
+    # The number of threads per data directory to be used for log recovery at startup and flushing at shutdown.
+    # This value is recommended to be increased for installations with data dirs located in RAID array.
+    num.recovery.threads.per.data.dir=1
 
     ############################# Server Basics #############################
 
@@ -48,9 +72,6 @@ data:
     #init#broker.id=#init#
 
     #init#broker.rack=#init#
-
-    # Switch to enable topic deletion or not, default value is false
-    delete.topic.enable=true
 
     ############################# Socket Server Settings #############################
 
@@ -61,14 +82,18 @@ data:
     #   EXAMPLE:
     #     listeners = PLAINTEXT://your.host.name:9092
     #listeners=PLAINTEXT://:9092
+    listeners=OUTSIDE://:9094,PLAINTEXT://:9092
 
     # Hostname and port the broker will advertise to producers and consumers. If not set,
     # it uses the value for "listeners" if configured.  Otherwise, it will use the value
     # returned from java.net.InetAddress.getCanonicalHostName().
     #advertised.listeners=PLAINTEXT://your.host.name:9092
+    #init#advertised.listeners=OUTSIDE://#init#,PLAINTEXT://:9092
 
     # Maps listener names to security protocols, the default is for them to be the same. See the config documentation for more details
     #listener.security.protocol.map=PLAINTEXT:PLAINTEXT,SSL:SSL,SASL_PLAINTEXT:SASL_PLAINTEXT,SASL_SSL:SASL_SSL
+    listener.security.protocol.map=PLAINTEXT:PLAINTEXT,SSL:SSL,SASL_PLAINTEXT:SASL_PLAINTEXT,SASL_SSL:SASL_SSL,OUTSIDE:PLAINTEXT
+    inter.broker.listener.name=PLAINTEXT
 
     # The number of threads that the server uses for receiving requests from the network and sending responses to the network
     num.network.threads=3
@@ -88,21 +113,6 @@ data:
     # large message config
     message.max.bytes=2097152
     replica.fetch.max.bytes=10485760    
-
-
-    ############################# Log Basics #############################
-
-    # A comma seperated list of directories under which to store log files
-    log.dirs=/tmp/kafka-logs
-
-    # The default number of log partitions per topic. More partitions allow greater
-    # parallelism for consumption, but this will also result in more files across
-    # the brokers.
-    num.partitions=1
-
-    # The number of threads per data directory to be used for log recovery at startup and flushing at shutdown.
-    # This value is recommended to be increased for installations with data dirs located in RAID array.
-    num.recovery.threads.per.data.dir=1
 
     ############################# Internal Topic Settings  #############################
     # The replication factor for the group metadata internal topics "__consumer_offsets" and "__transaction_state"
@@ -136,7 +146,7 @@ data:
     # from the end of the log.
 
     # The minimum age of a log file to be eligible for deletion due to age
-    log.retention.hours=168
+    log.retention.hours=-1
 
     # A size-based retention policy for logs. Segments are pruned from the log as long as the remaining
     # segments don't drop below log.retention.bytes. Functions independently of log.retention.hours.
@@ -156,7 +166,7 @@ data:
     # server. e.g. "127.0.0.1:3000,127.0.0.1:3001,127.0.0.1:3002".
     # You can also append an optional chroot string to the urls to specify the
     # root directory for all kafka znodes.
-    zookeeper.connect=localhost:2181
+    zookeeper.connect=zookeeper:2181
 
     # Timeout in ms for connecting to zookeeper
     zookeeper.connection.timeout.ms=6000
@@ -172,21 +182,6 @@ data:
     group.initial.rebalance.delay.ms=0
 
   log4j.properties: |-
-    # Licensed to the Apache Software Foundation (ASF) under one or more
-    # contributor license agreements.  See the NOTICE file distributed with
-    # this work for additional information regarding copyright ownership.
-    # The ASF licenses this file to You under the Apache License, Version 2.0
-    # (the "License"); you may not use this file except in compliance with
-    # the License.  You may obtain a copy of the License at
-    #
-    #    http://www.apache.org/licenses/LICENSE-2.0
-    #
-    # Unless required by applicable law or agreed to in writing, software
-    # distributed under the License is distributed on an "AS IS" BASIS,
-    # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    # See the License for the specific language governing permissions and
-    # limitations under the License.
-
     # Unspecified loggers and loggers with additivity=true output to server.log and stdout
     # Note that INFO only applies to unspecified loggers, the log level of the child logger is used otherwise
     log4j.rootLogger=INFO, stdout
