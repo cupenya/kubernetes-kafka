@@ -2,7 +2,7 @@ apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
   name: events-kube-kafka
-  namespace: kafka
+  namespace: kafka-prod
 spec:
   replicas: 1
   strategy:

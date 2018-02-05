@@ -26,10 +26,10 @@ We also think the plain-yaml approach of this project is easier to understand an
 
 Keep an eye on `kubectl --namespace kafka get pods -w`.
 
-The goal is to provide [Bootstrap servers](http://kafka.apache.org/documentation/#producerconfigs): `kafka-0.broker.kafka.svc.cluster.local:9092,kafka-1.broker.kafka.svc.cluster.local:9092,kafka-2.broker.kafka.svc.cluster.local:9092`
+The goal is to provide [Bootstrap servers](http://kafka.apache.org/documentation/#producerconfigs): `kafka-0.broker.kafka-prod.svc.cluster.local:9092,kafka-1.broker.kafka-prod.svc.cluster.local:9092,kafka-2.broker.kafka-prod.svc.cluster.local:9092`
 `
 
-Zookeeper at `zookeeper.kafka.svc.cluster.local:2181`.
+Zookeeper at `zookeeper.kafka-prod.svc.cluster.local:2181`.
 
 ## Prepare storage classes
 
@@ -56,7 +56,7 @@ kubectl apply -f ./kafka/
 You might want to verify in logs that Kafka found its own DNS name(s) correctly. Look for records like:
 ```
 kubectl -n kafka logs kafka-0 | grep "Registered broker"
-# INFO Registered broker 0 at path /brokers/ids/0 with addresses: PLAINTEXT -> EndPoint(kafka-0.broker.kafka.svc.cluster.local,9092,PLAINTEXT)
+# INFO Registered broker 0 at path /brokers/ids/0 with addresses: PLAINTEXT -> EndPoint(kafka-0.broker.kafka-prod.svc.cluster.local,9092,PLAINTEXT)
 ```
 
 That's it. Just add business value :wink:.

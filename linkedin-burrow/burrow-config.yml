@@ -1,7 +1,7 @@
 kind: ConfigMap
 metadata:
   name: burrow-config
-  namespace: kafka
+  namespace: kafka-prod
 apiVersion: v1
 data:
   burrow.toml: |-
