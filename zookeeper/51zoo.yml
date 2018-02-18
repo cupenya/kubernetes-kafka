@@ -19,6 +19,8 @@ spec:
         storage: ephemeral
       annotations:
     spec:
+      nodeSelector:
+        "cloud.google.com/gke-nodepool": srv-kafka-pool
       terminationGracePeriodSeconds: 10
       initContainers:
       - name: init-config
