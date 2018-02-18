@@ -19,6 +19,8 @@ spec:
         storage: persistent
       annotations:
     spec:
+      nodeSelector:
+        "cloud.google.com/gke-nodepool": "dev-kafka-pool"
       terminationGracePeriodSeconds: 10
       initContainers:
       - name: init-config
